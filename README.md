@@ -25,6 +25,15 @@ This project provides a complete pipeline for:
 - **⚡ GPU Accelerated**: Optimized for Google Colab's free GPU
 - **📊 Progress Monitoring**: Real-time training metrics and checkpointing
 - **🎵 Audio Generation**: Quick inference testing with sample outputs
+- **💾 Disk-based Audio Loading**: Efficient CSV-based dataset loading that reads audio files directly from disk
+- **🛡️ Error Resilient**: Graceful handling of corrupted or missing audio files
+
+## 🔄 Recent Updates
+
+- **✅ Fixed Audio Loading Issues**: Implemented robust disk-based audio loading instead of problematic HuggingFace dataset format
+- **✅ CSV Dataset Support**: Training script now automatically detects and properly handles CSV files with audio paths
+- **✅ Improved Error Handling**: Better error messages and graceful handling of missing or corrupted files
+- **✅ Memory Efficiency**: Audio files are loaded on-demand rather than pre-loaded into memory
 
 ## 🛠️ Requirements
 
@@ -41,21 +50,27 @@ This project provides a complete pipeline for:
 
 ## 📁 Dataset Format
 
-Your dataset should contain:
+Your dataset should contain audio files and their corresponding text transcriptions. **CSV format is now the recommended approach** due to improved reliability and performance.
 
-### Option 1: CSV Format
+### ✅ Recommended: CSV Format
 A CSV file with columns:
-- `path`: Path to audio file (WAV format preferred)
+- `path`: **Full path** to audio file (WAV format preferred)
 - `text`: Corresponding Thai text
+
+**Key Advantages:**
+- 🚀 **Better Performance**: Direct disk loading without HuggingFace dataset overhead
+- 🛡️ **More Robust**: Graceful handling of missing/corrupted files
+- 💾 **Memory Efficient**: Audio loaded on-demand during training
+- 🔧 **Auto-Detection**: Training script automatically detects `.csv` files
 
 Example:
 ```csv
 path,text
-/path/to/audio1.wav,สวัสดีครับ วันนี้อากาศดีมาก
-/path/to/audio2.wav,ขอบคุณสำหรับความช่วยเหลือ
+/full/path/to/audio1.wav,สวัสดีครับ วันนี้อากาศดีมาก
+/full/path/to/audio2.wav,ขอบคุณสำหรับความช่วยเหลือ
 ```
 
-### Option 2: Folder Structure
+### Alternative: Folder Structure
 ```
 your_dataset/
 ├── audio1.wav
@@ -65,7 +80,7 @@ your_dataset/
 └── ...
 ```
 
-Each `.wav` file should have a corresponding `.txt` file with the same basename containing the Thai transcription.
+Each `.wav` file should have a corresponding `.txt` file with the same basename containing the Thai transcription. The notebook will automatically convert this to CSV format.
 
 ## 🎵 Audio Guidelines
 
