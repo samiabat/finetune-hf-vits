@@ -50,9 +50,9 @@ This project provides a complete pipeline for:
 
 ## 📁 Dataset Format
 
-Your dataset should contain audio files and their corresponding text transcriptions. **CSV format is now the recommended approach** due to improved reliability and performance.
+Your dataset should contain audio files and their corresponding text transcriptions. The training script supports three dataset formats with automatic detection.
 
-### ✅ Recommended: CSV Format
+### ✅ Option 1: CSV Format (Recommended for new datasets)
 A CSV file with columns:
 - `path`: **Full path** to audio file (WAV format preferred)
 - `text`: Corresponding Thai text
@@ -70,7 +70,7 @@ path,text
 /full/path/to/audio2.wav,ขอบคุณสำหรับความช่วยเหลือ
 ```
 
-### Alternative: Folder Structure
+### Option 2: Folder Structure
 ```
 your_dataset/
 ├── audio1.wav
@@ -81,6 +81,27 @@ your_dataset/
 ```
 
 Each `.wav` file should have a corresponding `.txt` file with the same basename containing the Thai transcription. The notebook will automatically convert this to CSV format.
+
+### 🆕 Option 3: Saved HuggingFace Dataset (New!)
+You can now use datasets saved with HuggingFace's `save_to_disk()` function:
+
+```python
+# Save your dataset
+dataset.save_to_disk('/path/to/saved_dataset')
+
+# Use in training config
+"dataset_name": "/path/to/saved_dataset"
+```
+
+**Key Advantages:**
+- 🔄 **Preprocessing Persistence**: Save preprocessed datasets for reuse
+- ⚡ **Faster Loading**: No need to reprocess data each time
+- 🔀 **Split Support**: Supports DatasetDict with train/eval splits
+- 🔧 **Auto-Detection**: Training script automatically detects saved datasets
+
+**Supported Formats:**
+- Single dataset: `Dataset.from_list(data).save_to_disk(path)`
+- Multiple splits: `DatasetDict({'train': train_ds, 'eval': eval_ds}).save_to_disk(path)`
 
 ## 🎵 Audio Guidelines
 

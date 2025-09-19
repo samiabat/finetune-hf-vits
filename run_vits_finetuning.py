@@ -21,7 +21,7 @@ import soundfile as sf
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration, is_wandb_available, set_seed
-from datasets import DatasetDict, load_dataset
+from datasets import DatasetDict, load_dataset, load_from_disk
 from monotonic_align import maximum_path
 from tqdm.auto import tqdm
 
@@ -524,6 +524,29 @@ def compute_val_metrics_and_losses(
     return val_losses
 
 
+def is_saved_dataset_directory(path):
+    """
+    Check if a directory contains a saved HuggingFace dataset.
+    A saved dataset directory can be either:
+    1. A single dataset with dataset_info.json and state.json files
+    2. A DatasetDict with dataset_dict.json file and subdirectories for each split
+    """
+    import os
+    if not os.path.isdir(path):
+        return False
+    
+    # Check for DatasetDict format (has dataset_dict.json)
+    dataset_dict_path = os.path.join(path, 'dataset_dict.json')
+    if os.path.exists(dataset_dict_path):
+        return True
+    
+    # Check for single dataset format (has dataset_info.json and state.json)
+    dataset_info_path = os.path.join(path, 'dataset_info.json')
+    state_json_path = os.path.join(path, 'state.json')
+    
+    return os.path.exists(dataset_info_path) and os.path.exists(state_json_path)
+
+
 def load_dataset_from_csv(csv_path, audio_column_name="path", text_column_name="text"):
     """
     Custom function to load dataset from CSV file with audio file paths.
@@ -639,8 +662,9 @@ def main():
     # 4. Load dataset
     raw_datasets = DatasetDict()
     
-    # Check if dataset_name is a CSV file path
-    is_csv_dataset = data_args.dataset_name.endswith('.csv')
+    # Check what type of dataset we're loading
+    is_csv_dataset = data_args.dataset_name.lower().endswith('.csv')
+    is_saved_dataset = is_saved_dataset_directory(data_args.dataset_name)
 
     if training_args.do_train:
         if is_csv_dataset:
@@ -649,6 +673,15 @@ def main():
                 audio_column_name=data_args.audio_column_name,
                 text_column_name=data_args.text_column_name
             )
+        elif is_saved_dataset:
+            # Load saved dataset from disk
+            dataset = load_from_disk(data_args.dataset_name)
+            # Use the specified split name, or 'train' if not specified
+            if data_args.train_split_name in dataset:
+                raw_datasets["train"] = dataset[data_args.train_split_name]
+            else:
+                # If it's a single dataset (not DatasetDict), use it directly
+                raw_datasets["train"] = dataset
         else:
             raw_datasets["train"] = load_dataset(
                 data_args.dataset_name,
@@ -666,6 +699,18 @@ def main():
                 audio_column_name=data_args.audio_column_name,
                 text_column_name=data_args.text_column_name
             )
+        elif is_saved_dataset:
+            # Load saved dataset from disk
+            dataset = load_from_disk(data_args.dataset_name)
+            # Use the specified split name, or 'train' if eval split doesn't exist
+            if data_args.eval_split_name in dataset:
+                raw_datasets["eval"] = dataset[data_args.eval_split_name]
+            elif data_args.train_split_name in dataset:
+                # Fall back to train split if eval split doesn't exist
+                raw_datasets["eval"] = dataset[data_args.train_split_name]
+            else:
+                # If it's a single dataset (not DatasetDict), use it directly
+                raw_datasets["eval"] = dataset
         else:
             raw_datasets["eval"] = load_dataset(
                 data_args.dataset_name,
