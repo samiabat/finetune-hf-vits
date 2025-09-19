@@ -15,6 +15,9 @@ import datasets
 import numpy as np
 import torch
 import os
+import pandas as pd
+import librosa
+import soundfile as sf
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import ProjectConfiguration, is_wandb_available, set_seed
@@ -521,6 +524,55 @@ def compute_val_metrics_and_losses(
     return val_losses
 
 
+def load_dataset_from_csv(csv_path, audio_column_name="path", text_column_name="text"):
+    """
+    Custom function to load dataset from CSV file with audio file paths.
+    Loads audio from disk instead of using HuggingFace datasets.
+    """
+    # Read CSV file
+    df = pd.read_csv(csv_path)
+    
+    # Validate columns exist
+    if audio_column_name not in df.columns:
+        raise ValueError(f"Column '{audio_column_name}' not found in CSV. Available columns: {df.columns.tolist()}")
+    if text_column_name not in df.columns:
+        raise ValueError(f"Column '{text_column_name}' not found in CSV. Available columns: {df.columns.tolist()}")
+    
+    def load_audio_data(row):
+        """Load audio file and return structured data"""
+        audio_path = row[audio_column_name]
+        text = row[text_column_name]
+        
+        try:
+            # Load audio with librosa
+            audio_array, sampling_rate = librosa.load(audio_path, sr=None, mono=True)
+            
+            return {
+                audio_column_name: {
+                    "array": audio_array.astype(np.float32),
+                    "sampling_rate": sampling_rate,
+                    "path": audio_path
+                },
+                text_column_name: text
+            }
+        except Exception as e:
+            logger.warning(f"Failed to load audio file {audio_path}: {e}")
+            return None
+    
+    # Load all audio data
+    data_list = []
+    for _, row in df.iterrows():
+        audio_data = load_audio_data(row)
+        if audio_data is not None:
+            data_list.append(audio_data)
+    
+    logger.info(f"Loaded {len(data_list)} audio samples from {csv_path}")
+    
+    # Convert to HuggingFace Dataset
+    from datasets import Dataset
+    return Dataset.from_list(data_list)
+
+
 def main():
     # 1. Parse input arguments
     # See all possible arguments in src/transformers/training_args.py
@@ -586,24 +638,42 @@ def main():
 
     # 4. Load dataset
     raw_datasets = DatasetDict()
+    
+    # Check if dataset_name is a CSV file path
+    is_csv_dataset = data_args.dataset_name.endswith('.csv')
 
     if training_args.do_train:
-        raw_datasets["train"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.train_split_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-        )
+        if is_csv_dataset:
+            raw_datasets["train"] = load_dataset_from_csv(
+                data_args.dataset_name,
+                audio_column_name=data_args.audio_column_name,
+                text_column_name=data_args.text_column_name
+            )
+        else:
+            raw_datasets["train"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=data_args.train_split_name,
+                cache_dir=model_args.cache_dir,
+                token=model_args.token,
+            )
 
     if training_args.do_eval:
-        raw_datasets["eval"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.eval_split_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-        )
+        if is_csv_dataset:
+            # For CSV datasets, use same dataset for both train and eval
+            raw_datasets["eval"] = load_dataset_from_csv(
+                data_args.dataset_name,
+                audio_column_name=data_args.audio_column_name,
+                text_column_name=data_args.text_column_name
+            )
+        else:
+            raw_datasets["eval"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=data_args.eval_split_name,
+                cache_dir=model_args.cache_dir,
+                token=model_args.token,
+            )
 
     if data_args.audio_column_name not in next(iter(raw_datasets.values())).column_names:
         raise ValueError(
