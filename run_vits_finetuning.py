@@ -596,6 +596,26 @@ def load_dataset_from_csv(csv_path, audio_column_name="path", text_column_name="
     return Dataset.from_list(data_list)
 
 
+def get_dataset_sampling_rate(dataset, audio_column_name):
+    """
+    Get sampling rate from dataset, handling both Audio features and dict-based audio data.
+    """
+    # Try to get sampling rate from Audio feature first
+    audio_feature = dataset.features[audio_column_name]
+    if hasattr(audio_feature, 'sampling_rate'):
+        return audio_feature.sampling_rate
+    
+    # If it's a dict-based feature (like from CSV), get sampling rate from first sample
+    if len(dataset) > 0:
+        first_sample = dataset[0][audio_column_name]
+        if isinstance(first_sample, dict) and 'sampling_rate' in first_sample:
+            return first_sample['sampling_rate']
+    
+    # Fallback: assume 16kHz (common for speech)
+    logger.warning(f"Could not determine sampling rate from dataset. Using default 16000 Hz.")
+    return 16000
+
+
 def main():
     # 1. Parse input arguments
     # See all possible arguments in src/transformers/training_args.py
@@ -774,12 +794,25 @@ def main():
     )
 
     # 6. Resample speech dataset if necessary
-    dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
+    dataset_sampling_rate = get_dataset_sampling_rate(next(iter(raw_datasets.values())), data_args.audio_column_name)
+    
+    # Check if we need to handle dict-based audio data (from CSV) vs Audio features
+    first_dataset = next(iter(raw_datasets.values()))
+    audio_feature = first_dataset.features[data_args.audio_column_name]
+    is_dict_audio = not hasattr(audio_feature, 'sampling_rate')
+    
     if dataset_sampling_rate != feature_extractor.sampling_rate:
-        with training_args.main_process_first(desc="resample"):
-            raw_datasets = raw_datasets.cast_column(
-                data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
-            )
+        if is_dict_audio:
+            # For dict-based audio data, we need to resample manually
+            logger.info(f"Dataset uses dict-based audio data with sampling rate {dataset_sampling_rate} Hz. "
+                       f"Will resample to {feature_extractor.sampling_rate} Hz during preprocessing.")
+            # Note: Resampling will be handled in the preprocessing function
+        else:
+            # For Audio features, use the standard casting approach
+            with training_args.main_process_first(desc="resample"):
+                raw_datasets = raw_datasets.cast_column(
+                    data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+                )
 
     # 7. Preprocessing the datasets.
     # We need to read the audio files as arrays and tokenize the targets.
@@ -839,6 +872,23 @@ def main():
     def prepare_dataset(batch):
         # process target audio
         sample = batch[audio_column_name]
+        
+        # Handle resampling for dict-based audio data if needed
+        if sample["sampling_rate"] != feature_extractor.sampling_rate:
+            import librosa
+            # Resample the audio array to match feature extractor's expected sampling rate
+            resampled_array = librosa.resample(
+                sample["array"], 
+                orig_sr=sample["sampling_rate"], 
+                target_sr=feature_extractor.sampling_rate
+            )
+            # Update the sample with resampled data
+            sample = {
+                "array": resampled_array,
+                "sampling_rate": feature_extractor.sampling_rate,
+                "path": sample.get("path", "")
+            }
+        
         audio_inputs = feature_extractor(
             sample["array"],
             sampling_rate=sample["sampling_rate"],
