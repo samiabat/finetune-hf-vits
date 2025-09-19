@@ -1,268 +1,209 @@
-# Finetune VITS and MMS using HuggingFace's tools
+# 🇹🇭 Thai Text-to-Speech Fine-tuning with MMS-TTS
 
-## Introduction
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/samiabat/thai-colab/blob/main/Thai_TTS_Finetune_MMS_Colab.ipynb)
 
-[VITS](https://huggingface.co/docs/transformers/model_doc/vits) is a light weight, low-latency model for English text-to-speech (TTS). Massively Multilingual Speech ([MMS](https://huggingface.co/docs/transformers/model_doc/mms#speech-synthesis-tts)) is an extension of VITS for multilingual TTS, that supports over [1100 languages](https://huggingface.co/facebook/mms-tts#supported-languages). 
+A comprehensive Google Colab notebook for fine-tuning **Meta's MMS-TTS (Massively Multilingual Speech)** model specifically for Thai language text-to-speech synthesis.
 
-Both use the same underlying VITS architecture, consisting of a discriminator and a generator for GAN-based training. They differ in their tokenizers: the VITS tokenizer transforms English input text into phonemes, while the MMS tokenizer transforms input text into character-based tokens.
+## 🚀 Quick Start
 
-You should fine-tune VITS-based checkpoints if you want to use a permissive English TTS model and fine-tune MMS-based checkpoints for every other cases.
+**Click the "Open in Colab" badge above** to start training your own Thai TTS model immediately!
 
-Coupled with the right data and the following training recipe, you can get an excellent finetuned version of every VITS/MMS checkpoints in **20 minutes** with as little as **80 to 150 samples**.
+## 📋 Overview
 
-Finetuning VITS or MMS requires multiples stages to be completed in successive order:
+This project provides a complete pipeline for:
+- Fine-tuning Meta's pre-trained MMS-TTS Thai model on your custom dataset
+- Processing and normalizing Thai text using PyThaiNLP
+- Converting audio files to the optimal format (16kHz mono WAV)
+- Training a high-quality Thai text-to-speech model
+- Generating synthetic Thai speech
 
-1. [Install requirements](#1-requirements)
-2. [Choose or create the initial model](#2-model-selection)
-3. [Finetune the model](#3-finetuning)
-4. [Optional - how to use the finetuned model](#4-inference)
+## ✨ Features
 
-## Samples and demo
+- **🎯 Robust Training Pipeline**: Complete end-to-end training with error handling
+- **🔧 Audio Processing**: Automatic resampling and format conversion
+- **📝 Thai Text Normalization**: Proper handling of Thai script using PyThaiNLP
+- **⚡ GPU Accelerated**: Optimized for Google Colab's free GPU
+- **📊 Progress Monitoring**: Real-time training metrics and checkpointing
+- **🎵 Audio Generation**: Quick inference testing with sample outputs
 
-Try out these spaces:
-- [Explore English and Spanish finetuning on accents](https://huggingface.co/spaces/hf-audio/explore-vits)
-- [Explore finetuning on Spanish, English, Tamil, Gujarati, Marathi](https://huggingface.co/spaces/hf-audio/compare-vits-finetuned)
+## 🛠️ Requirements
 
+### For Google Colab (Recommended)
+- Google account
+- Google Drive for storing datasets and model checkpoints
+- GPU runtime (T4/V100/A100)
 
-<details>
-  <summary>Open to listen to snippets of before and after finetuning </summary>
-    
-https://github.com/ylacombe/finetune-hf-vits/assets/52246514/5f1fb903-59b8-4c0d-9bee-6a50c63c2bfa
+### For Local Development
+- Python 3.8+
+- CUDA-compatible GPU (recommended)
+- 8GB+ VRAM for training
+- Required packages (automatically installed in notebook)
 
-</details>
+## 📁 Dataset Format
 
+Your dataset should contain:
 
+### Option 1: CSV Format
+A CSV file with columns:
+- `path`: Path to audio file (WAV format preferred)
+- `text`: Corresponding Thai text
 
-
-
-## License
-The VITS checkpoints are released under the permissive [MIT License](https://opensource.org/license/mit/). The MMS checkpoints, on the other hand, are licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/), a non-commercial license. 
-
-**Note:** Any finetuned models derived from these checkpoints will inherit the same licenses as their respective base models. **Please ensure that you comply with the terms of the applicable license when using or distributing these models.**
-    
-
-## 1. Requirements
-
-
-0. Clone this repository and install common requirements.
-
-```sh
-git clone git@github.com:ylacombe/finetune-hf-vits.git
-cd finetune-hf-vits
-pip install -r requirements.txt
+Example:
+```csv
+path,text
+/path/to/audio1.wav,สวัสดีครับ วันนี้อากาศดีมาก
+/path/to/audio2.wav,ขอบคุณสำหรับความช่วยเหลือ
 ```
 
-1. Link your Hugging Face account so that you can pull/push model repositories on the Hub. This will allow you to save the finetuned weights on the Hub so that you can share them with the community and reuse them easily. Run the command:
-
-```bash
-git config --global credential.helper store
-huggingface-cli login
+### Option 2: Folder Structure
 ```
-And then enter an authentication token from https://huggingface.co/settings/tokens. Create a new token if you do not have one already. You should make sure that this token has "write" privileges.
-
-
-2. Build the monotonic alignment search function using cython. This is absolutely necessary since the Python-native-version is awfully slow.
-```sh
-# Cython-version Monotonoic Alignment Search
-cd monotonic_align
-mkdir monotonic_align
-python setup.py build_ext --inplace
-cd ..
+your_dataset/
+├── audio1.wav
+├── audio1.txt
+├── audio2.wav
+├── audio2.txt
+└── ...
 ```
 
+Each `.wav` file should have a corresponding `.txt` file with the same basename containing the Thai transcription.
 
-3. (**Optional**) If you're using an **original VITS checkpoint**, as opposed to MMS checkpoints, install **phonemizer**.
+## 🎵 Audio Guidelines
 
-Follow steps indicated [here](https://bootphon.github.io/phonemizer/install.html).
+For best results, your audio data should:
+- **Duration**: 1-12 seconds per clip
+- **Format**: WAV, 16kHz, mono (automatically converted if needed)
+- **Quality**: Clean speech with minimal background noise
+- **Quantity**: 1-3 hours for voice cloning, 5-10+ hours for robust models
+- **Speaker**: Single speaker for consistency
 
-<details>
-  <summary>Open for an example on Debian/Unbuntu </summary>
+## 🔧 Configuration
 
-E.g, if you're on Debian/Unbuntu:
-```sh
-# Install dependencies
-sudo apt-get install festival espeak-ng mbrola
-# Install phonemizer
-pip install phonemizer
-```
-</details>
+### Key Parameters to Adjust
 
-4. (**Optional**) With MMS checkpoints, **some languages** require to install **uroman**.
+1. **Paths Configuration**:
+   ```python
+   DATA_ROOT = '/content/drive/MyDrive/your-dataset/'
+   TRANSCRIPT_CSV = '/content/drive/MyDrive/your-dataset/metadata.csv'
+   WORK_DIR = '/content/drive/MyDrive/thai_tts/work'
+   ```
 
-<details>
-  <summary>Open for details </summary>
-    
-Some languages require to use `uroman` before feeding the text to `VitsTokenizer`, since currently the tokenizer does not support performing the pre-processing itself.
+2. **Training Parameters**:
+   ```python
+   "per_device_train_batch_size": 8,  # Reduce if OOM
+   "max_steps": 20000,               # Increase for longer training
+   "learning_rate": 0.0001,          # Adjust based on dataset size
+   ```
 
-To do this, you need to clone the uroman repository to your local machine and set the bash variable UROMAN to the local path:
+3. **Audio Filtering**:
+   ```python
+   MIN_DUR = 1.0    # Minimum clip duration (seconds)
+   MAX_DUR = 12.0   # Maximum clip duration (seconds)
+   ```
 
-```sh
-git clone https://github.com/isi-nlp/uroman.git
-cd uroman
-export UROMAN=$(pwd)
-```
+## 📊 Training Process
 
-The rest is taking care of by the training script. Don't forget to adapt the inference snippet as indicated [here](#use-the-finetuned-models).
+The notebook includes these main steps:
 
-</details>
+1. **Environment Setup**: Install dependencies and compile required extensions
+2. **Data Loading**: Mount Google Drive and configure paths
+3. **Preprocessing**: Audio conversion and Thai text normalization
+4. **Dataset Creation**: Build HuggingFace dataset for training
+5. **Model Preparation**: Convert MMS checkpoint for fine-tuning
+6. **Training**: Fine-tune the model with your data
+7. **Inference**: Test the trained model with sample text
+8. **Export**: Save checkpoints to Google Drive
 
-## 2. Model selection
+## 🎛️ Advanced Usage
 
-There are two options:
+### Memory Optimization
+If you encounter out-of-memory errors:
+- Reduce `per_device_train_batch_size` from 8 to 4 or 2
+- Increase `gradient_accumulation_steps` to maintain effective batch size
+- Use shorter audio clips (< 8 seconds)
 
-**Option 1: a training checkpoint is already available**
+### Training Time Optimization
+- Start with fewer `max_steps` (e.g., 5000) to validate the pipeline
+- Use smaller datasets for initial testing
+- Monitor loss curves to avoid overfitting
 
-Some checkpoints are already available, and chances are that the language that you want to train your model on already has a checkpoint. 
+### Quality Improvements
+- Use high-quality, noise-free audio recordings
+- Ensure consistent pronunciation and speaking style
+- Balance your dataset across different phonemes and words
+- Consider data augmentation for small datasets
 
-Here is a non-exhaustive list of available checkpoint:
+## 🚨 Common Issues & Solutions
 
-<details>
-  <summary>Open for a checkpoints list </summary>
+### 1. ModuleNotFoundError: monotonic_align
+**Solution**: The notebook now automatically compiles the required extension.
 
-  * English
-    - `ylacombe/vits-ljs-with-discriminator` (make sure [the phonemizer package is installed](https://bootphon.github.io/phonemizer/install.html)) - ideal for monolingual finetuning
-    - `ylacombe/vits-vctk-with-discriminator` (make sure [the phonemizer package is installed](https://bootphon.github.io/phonemizer/install.html)) - ideal for multispeaker English finetuning.
-    - `ylacombe/mms-tts-eng-train` - if you want to avoid the use of the `phonemizer` package.
-  * Spanish - `ylacombe/mms-tts-spa-train`
-  * Korean - `ylacombe/mms-tts-kor-train`
-  * Marathi - `ylacombe/mms-tts-mar-train`
-  * Tamil - `ylacombe/mms-tts-tam-train`
-  * Gujarati - `ylacombe/mms-tts-guj-train`
-</details>
+### 2. Audio Column Error
+**Solution**: Fixed - the notebook now uses correct column names.
 
-In that case you found the right checkpoints, note the repository name and pass directly to the next step 🤗.
+### 3. Out of Memory (OOM)
+**Solutions**:
+- Reduce batch size: `"per_device_train_batch_size": 4`
+- Increase gradient accumulation: `"gradient_accumulation_steps": 4`
+- Use shorter audio clips
 
-**Option 2: no training checkpoint is available for your language**
+### 4. Slow Training
+**Solutions**:
+- Ensure GPU runtime is enabled in Colab
+- Use smaller datasets for testing
+- Consider using higher-end GPU (A100)
 
-Let's say that you want have a text-to-speech dataset in Ghari, a Malayo-Polynesian language.
+## 📈 Training Tips
 
-First, find if your language is covered by identifying if there is a MMS checkpoint trained on this language by searching for the language in the [MMS Language Coverage Overview](https://dl.fbaipublicfiles.com/mms/misc/language_coverage_mms.html).
+1. **Start Small**: Begin with a subset of your data to validate the pipeline
+2. **Monitor Progress**: Check loss curves and sample outputs regularly
+3. **Experiment**: Try different learning rates and batch sizes
+4. **Quality over Quantity**: Clean, well-recorded data is more valuable than large, noisy datasets
+5. **Backup**: Regularly save checkpoints to Google Drive
 
-If it is, identify the ISO 693-3 language code, here `gri`.
-
-Contrary to inference, finetuning requires the use of a discriminator that needs to be converted. 
-So you want to first creates a new checkpoint with this converted discriminator.
-
-In the following steps, replace `gri` with the language code you identified and <local-folder> with where you want to save the model locally. 
-The model will also be pushed to your hub repository `<your HF handle>/<repo-id-you-want>`. Simply remove `--push_to_hub <repo-id-you-want>` if you don't want to push to the hub:
-
-```sh
-cd <path-to-finetune-hf-vits-repo>
-python convert_original_discriminator_checkpoint.py --language_code gri --pytorch_dump_folder_path <local-folder> --push_to_hub <repo-id-you-want>
-```
-
-You can now use `<repo-id-you-want>` or `<local-folder>` as a starting point to finetune your model!
-
-> [!NOTE]
-> You only need to do this step once per language.
-
-
-
-## 3. Finetuning
-
-There are two ways to run the finetuning scrip, both using command lines. Note that you only need one GPU to finetune VITS/MMS as the models are really lightweight (83M parameters).
-
-**Preferred way: use a json config file**
-
- > [!NOTE]
-> Using a config file is the prefered way to use the finetuning script as it includes the most important parameters to consider. For a full list of parameters, run `python run_vits_finetuning.py --help`. Note that some parameters are not ignored by the training script.
-
-
-The [training_config_examples](./training_config_examples) folder hosts examples of config files. Once satisfied with your config file, you can then finetune the model.
-
-For example, [finetune_english.json](./training_config_examples/finetune_english.json) is a working example of finetuning on a Welsh female accent.
-
-```sh
-accelerate launch run_vits_finetuning.py ./training_config_examples/finetune_english.json
-```
-
-**Other option: pass parameters directly to the command line.**
-
-For example:
-
-```sh
-accelerate launch run_vits_finetuning.py --model_name_or_path MODEL_NAME_OR_PATH --output_dir OUTPUT_DIR ...
-```
-
-**Important parameters to consider:**
-* Everything related to artefacts: the `project_name` and the output directories (`hub_model_id`, `output_dir`) to keep track of the model.
-* The model to finetune: `model_name_or_path`.
-  - Here it should point to the training checkpoint of the previous [section](#2-model-selection).
-  - For example, if you choose an already existing checkpoint: `ylacombe/vits-ljs-with-discriminator`, or if you converted your own checkpoint: `<repo-id-you-want>` or `<local-folder>`. 
-* The dataset used `dataset_name` and its details: `dataset_config_name`, column names, etc. 
-  - If there are multiple speakers and you want to only keep one, be careful to `speaker_id_column_name`, `override_speaker_embeddings` and `filter_on_speaker_id`. The latter allows to keep only one speaker but you can also train on multiple speakers.
-  - For example the dataset used by default in [`finetune_english.json`](training_config_examples/finetune_english.json) is a subset of [British Isles accents dataset](https://huggingface.co/datasets/ylacombe/english_dialects), using a single Welsh female voice of the `welsh_female` configuration, identified by `speaker_id=5223`.
-* The most important hyperparameters
-   - `learning_rate`
-   - `batch_size`
-   - the different losses weights: weight_duration, weight_kl, weight_mel, weight_disc, weight_gen, weight_fmaps
-
-
- > [!NOTE]
-> The [training_config_examples](./training_config_examples) also contains two other examples, one to finetune a Gujarati checkpoint and another to finetune a Korean checkpoint. Those examples also shows how to track experiments using [wandb](https://github.com/wandb/wandb).
-
-
-## 4. Inference
-
-You can use a finetuned model via the Text-to-Speech (TTS) [pipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.pipeline) in just a few lines of code!
-Just replace `ylacombe/vits_ljs_welsh_female_monospeaker_2` with your own model id (`hub_model_id`) or path to the model (`output_dir`).
+## 🎵 Sample Usage After Training
 
 ```python
 from transformers import pipeline
-import scipy
+import soundfile as sf
 
-model_id = "ylacombe/vits_ljs_welsh_female_monospeaker_2"
-synthesiser = pipeline("text-to-speech", model_id) # add device=0 if you want to use a GPU
+# Load your fine-tuned model
+tts = pipeline("text-to-speech", model="/path/to/your/checkpoint")
 
-speech = synthesiser("Hello, my dog is cooler than you!")
+# Generate speech
+text = "สวัสดีครับ นี่คือเสียงสังเคราะห์ภาษาไทย"
+output = tts(text)
 
-scipy.io.wavfile.write("finetuned_output.wav", rate=speech["sampling_rate"], data=speech["audio"][0])
+# Save audio
+sf.write("output.wav", output["audio"], output["sampling_rate"])
 ```
 
-Note that if your model needs to use `uroman` to train, you also should apply the uroman package to your text inputs prior to passing them to the pipeline:
+## 📝 License & Attribution
 
-```python
-import os
-import subprocess
-from transformers import pipeline
-import scipy
+- **MMS-TTS**: Released under CC-BY-NC 4.0 license by Meta
+- **This Notebook**: MIT License
+- **Commercial Use**: For commercial applications, consider training from scratch or using a different base model
 
-model_id = "facebook/mms-tts-kor"
-synthesiser = pipeline("text-to-speech", model_id) # add device=0 if you want to use a GPU
+## 🤝 Contributing
 
-def uromanize(input_string, uroman_path):
-    """Convert non-Roman strings to Roman using the `uroman` perl package."""
-    script_path = os.path.join(uroman_path, "bin", "uroman.pl")
+Feel free to:
+- Report issues or bugs
+- Suggest improvements
+- Share your trained models
+- Contribute code enhancements
 
-    command = ["perl", script_path]
+## 📚 References
 
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    # Execute the perl command
-    stdout, stderr = process.communicate(input=input_string.encode())
+- [Meta MMS Paper](https://research.facebook.com/publications/scaling-speech-technology-to-1000-languages/)
+- [finetune-hf-vits Repository](https://github.com/ylacombe/finetune-hf-vits)
+- [PyThaiNLP Documentation](https://pythainlp.github.io/)
+- [Hugging Face Transformers](https://huggingface.co/transformers/)
 
-    if process.returncode != 0:
-        raise ValueError(f"Error {process.returncode}: {stderr.decode()}")
+## 🏷️ Tags
 
-    # Return the output as a string and skip the new-line character at the end
-    return stdout.decode()[:-1]
+`thai-tts` `text-to-speech` `mms-tts` `google-colab` `machine-learning` `nlp` `pytorch` `huggingface` `thai-language` `speech-synthesis`
 
-text = "이봐 무슨 일이야"
-uromanized_text = uromanize(text, uroman_path=os.environ["UROMAN"])
+---
 
-speech = synthesiser(uromanized_text)
+**Happy Training! 🎉**
 
-scipy.io.wavfile.write("finetuned_output.wav", rate=speech["sampling_rate"], data=speech["audio"][0])
-```
-
------------------------------
-
-
-
-## Acknowledgements
-
-
-* [VITS](https://huggingface.co/docs/transformers/model_doc/vits) was proposed in 2021, in [Conditional Variational Autoencoder with Adversarial Learning for End-to-End Text-to-Speech](https://arxiv.org/abs/2106.06103) by Jaehyeon Kim, Jungil Kong, Juhee Son. You can find the original codebase [here](https://github.com/jaywalnut310/vits).
-* [MMS](https://huggingface.co/facebook/mms-tts) was proposed in [Scaling Speech Technology to 1,000+ Languages](https://arxiv.org/abs/2305.13516) by Vineel Pratap, Andros Tjandra, Bowen Shi and co. You can find more details about the supported languages and their ISO 639-3 codes in the [MMS Language Coverage Overview](https://dl.fbaipublicfiles.com/mms/misc/language_coverage_mms.html),
-and see all MMS-TTS checkpoints on the Hugging Face Hub: [facebook/mms-tts](https://huggingface.co/models?sort=trending&search=facebook%2Fmms-tts).
-* [Hugging Face 🤗 Transformers](https://huggingface.co/docs/transformers/index) for the model integration, [Hugging Face 🤗 Accelerate](https://huggingface.co/docs/accelerate/index) for the distributed code and [Hugging Face 🤗 datasets](https://huggingface.co/docs/datasets/index) for facilitating datasets access.
-* @nivibilla's [adapation](https://github.com/nivibilla/efficient-vits-finetuning) of HifiGan's discriminator, used for English VITS training.
+If you find this project helpful, please ⭐ star the repository and share it with others interested in Thai TTS!
